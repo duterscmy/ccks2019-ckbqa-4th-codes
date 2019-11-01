@@ -12,7 +12,6 @@
   - PKUBASE: 评测方提供的知识库文件
   ### 依赖字典：
   这些字典均可通过helper中的程序生成
-  - question_2_mention.pkl: 一个基于Bert的序列标注模型识别出的问题中mention，因为直接调用该模型比较困难，故存成字典
   - segment_dic.txt: 分词词典
   - prop_dic.pkl: 知识库中的属性值字典
   - mention2entity_dic.pkl: 实体链接字典，实际就是评测方提供的文件存成了pkl格式
