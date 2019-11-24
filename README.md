@@ -19,7 +19,7 @@
   - char_2_prop.pkl：知识库中字符to属性值的倒排索引，用于属性值模糊匹配
   ### 将PKUBASE知识库搭建在本地服务器
   1. 下载neo4j图数据库的linux版本，地址https://neo4j.com/ ，上传到服务器上解压即可。配置好conf，具体参考https://blog.csdn.net/u013946356/article/details/81736232 
-  2. 使用大规模导入工具 ./neo4j-admin import 来导入知识库，这里需要把PKUBASE知识库源文件处理成一定格式
+  2. 使用大规模导入工具 ./neo4j-admin import 来导入知识库，这里需要把PKUBASE知识库源文件处理成一定格式，参考：生成neo4j文件和各种词典.ipynb
   ### 训练流程（按顺序）：
   - train_ner.py 根据语料集反向标注问题，训练一个NER模型
   - mention_extractor.py: 同时使用jieba分词和bert序列标注来抽取问题中的实体mention
