@@ -14,14 +14,9 @@ import time
 
 class PropExtractor(object):
     def __init__(self):
-        '''
-        prop_dic是一个存放知识库中所有属性名的字典及频率
-        char_2_prop是一个字映射属性的倒排索引，用于提高模糊匹配的速度
-        '''
         self.prop_dic = pickle.load(open('../data/prop_dic.pkl','rb'))#键没有引号
         self.char_2_prop = pickle.load(open('../data/char_2_prop.pkl','rb'))
         self.segger = thulac.thulac()
-        self.question2mention = pickle.load(open('../data/question_2_mention.pkl','rb'))
         print ('prop extractor loaded')
         
     
@@ -44,13 +39,6 @@ class PropExtractor(object):
                 if e in self.prop_dic:  # 一般书名号的属性就是需要的属性
                     mark_props[e] = e
                 question = re.sub(e, '', question)
-        try:
-            max_props = self.question2mention[QUES][1]
-            for p in max_props:
-                mark_props[p] = p
-        except:
-            print('this question dont have long props')
-            pass
         props['mark_props'] = mark_props
         
         #时间属性
@@ -74,7 +62,6 @@ class PropExtractor(object):
             time_props[rml_norm] = ymd
             question = re.sub(ymd,'',question) 
         props['time_props'] = time_props
-        
         #数字属性
         digit_props = {}
         elements = re.findall('\d+',question)
@@ -85,7 +72,7 @@ class PropExtractor(object):
         props['digit_props'] = digit_props
 
         
-        #其他属性,根据长度来去重
+        #其他属性,去重
         other_props = {}
         length = len(question)
         props_ngram = []
@@ -97,20 +84,18 @@ class PropExtractor(object):
                     if len(question[i:i+l])>max_len:
                         max_len = len(question[i:i+l])
                         
-        #得到包含在更长属性中的属性值
         stop_props = []
         for p in props_ngram:
             for q in props_ngram:
                 if p in q and p!=q and self.segger.cut(p)[0][1] not in ['ns']:  # 加拿大的，台湾的等问题 p不是地名
                     stop_props.append(p)
                     
-        #去掉包含在更长属性值中的属性值
-        new_props = []  
+        new_props = []  # 去掉包含在更长属性值中的属性值
         for p in props_ngram:
             if p not in stop_props:
                 new_props.append(p)
                     
-        new_new_props = [] #去掉长度过于短的属性值
+        new_new_props = []  # 去掉长度过于短的属性值
         for p in new_props:
             if len(p) == 1 and self.segger.cut(p)[0][1] in ['n']:  # 单字名词
                 new_new_props.append(p)
@@ -122,30 +107,30 @@ class PropExtractor(object):
         props['other_props'] = other_props
         
         #模糊匹配得到的属性
-#        stop_dic = {'有', '的', '是', '在', '上', '哪', '里', '\"', '什', '么', '中', '个'}
-#        prop2num = {}
-#        for char in QUES:
-#            if char in stop_dic:
-#                continue
-#            else:
-#                try:
-#                    for p in self.char_2_prop[char]:
-#                        if p in prop2num:
-#                            prop2num[p] += 1
-#                        else:
-#                            prop2num[p] = 1
-#                except:
-#                    continue
-#        sort_props = sorted(prop2num.items(),key = lambda prop2num:prop2num[1],reverse=True)
-#        top3_props = [key for key,value in sort_props[:3]]  # top3
+        stop_dic = {'有', '的', '是', '在', '上', '哪', '里', '\"', '什', '么', '中', '个'}
+        prop2num = {}
+        for char in QUES:
+            if char in stop_dic:
+                continue
+            else:
+                try:
+                    for p in self.char_2_prop[char]:
+                        if p in prop2num:
+                            prop2num[p] += 1
+                        else:
+                            prop2num[p] = 1
+                except:
+                    continue
+        sort_props = sorted(prop2num.items(),key = lambda prop2num:prop2num[1],reverse=True)
+        top3_props = [key for key,value in sort_props[:3]]  # top3
         fuzzy_props = {}
-#        for p in top3_props:
-#            fuzzy_props[p] = p
+        for p in top3_props:
+            fuzzy_props[p] = p
         props['fuzzy_props'] = fuzzy_props  # 取与问题中匹配字数最多的属性作为候选
 
         return props
     
-    def extract_subject_properties(self,question):  # 这个没改
+    def extract_subject_properties(self,question):
         '''
         输入一个问题，抽取出所有能和知识库中的属性值匹配的字符串，并将更有可能作为简单问题主语的属性值提取出来
         input:
@@ -163,7 +148,6 @@ class PropExtractor(object):
         else:
             subject_props = pred_props['other_props']
             subject_props.update(pred_props['fuzzy_props'])
-            #subject_props = dict(pred_props['other_props'], **pred_props['fuzzy_props'] )
         return subject_props
     
     
@@ -176,6 +160,7 @@ class PropExtractor(object):
         for i in range(len(corpus)):
             question = corpus[i]['question']
             gold_entitys = corpus[i]['gold_entitys']
+            entity_mention = corpus[i]['entity_mention']
             sql = corpus[i]['sql']
             shit = 'filter regex'
             if shit in sql:  # 有的也能找到答对
@@ -194,6 +179,7 @@ class PropExtractor(object):
 
             # list属性 主要是人名，小迪，六一居士，房仕龙等。。
             list_props = {}
+
             pred_props['list_props'] = list_props
             
             # 得到所有可能的属性corpus[i]['subject_props']
@@ -208,7 +194,7 @@ class PropExtractor(object):
             corpus[i]['subject_props'] = subject_props
             all_props_num += len(corpus[i]['subject_props'])
             
-            #统计该模块抽取主语实体的召回率
+            # 统计该模块抽取唯一主语实体的召回率
             if len(gold_props) == 1 and len(gold_entitys)==1:
                 gold_num += 1
                 if_same = self.CheckSame(gold_props,subject_props)  # 判断抽取出的属性值是否完全包括了gold props
@@ -263,9 +249,8 @@ class PropExtractor(object):
         return '-'.join(elements)
 
 if __name__ == "__main__":
-    inputpaths = ['../data/entity_mentions_train.pkl','../data/entity_mentions_valid.pkl']
-    outputpaths = ['../data/all_mentions_train.pkl','../data/all_mentions_valid.pkl']
-
+    inputpaths = ['../data/entity_mentions_train.pkl','../data/entity_mentions_valid.pkl','../data/entity_mentions_test.pkl']
+    outputpaths = ['../data/all_mentions_train.pkl','../data/all_mentions_valid.pkl','../data/all_mentions_test.pkl']
     starttime = time.time()
     pe = PropExtractor()
     for i in range(len(inputpaths)):
