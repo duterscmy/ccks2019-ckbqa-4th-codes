@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jul 16 16:59:28 2019
+Created on Mon Jul 29 09:17:41 2019
 
 @author: Administrator
 """
@@ -13,7 +13,6 @@ from prop_extractor import PropExtractor
 from entity_extractor import SubjectExtractor
 from tuple_extractor import TupleExtractor
 from kb import session,GetTwoEntityTuple
-import tensorflow as tf
 from sklearn.externals import joblib
 import re
 import thulac
@@ -33,9 +32,10 @@ class AnswerByPkubase(object):
         self.tuple_scaler = joblib.load('../data/tuple_scaler')
         
         self.segger = thulac.thulac()
-        self.not_relation = {'<中文名>','<外文名>','<本名>','<别名>'}
+        self.not_relation = {'<中文名>','<外文名>','<本名>','<别名>','<国籍>','<职业>'}#双实体问题桥接不考虑的关系
         self.validAns = {}
         self.qindex = 1
+        
     def LoadMentionDic(self):
         with cs.open('../PKUBASE/pkubase-mention2ent.txt','r','utf-8') as fp:
             mention2entity_dic = {}
@@ -217,17 +217,11 @@ class AnswerByPkubase(object):
         print ('====实体mention为====')
         print (mentions.keys())
         
-        if self.qindex <= 446:
-            props= self.pe.extract_properties(question)
-            subject_props,special_props = self.add_props(mentions,props)
-            dic['props'] = subject_props
-            print ('====属性mention为====')
-            print (subject_props.keys())
-        else:
-            subject_props = {}
-            dic['props'] = subject_props
-            print ('====属性mention为====')
-            print (subject_props.keys())
+        props= self.pe.extract_properties(question)
+        subject_props,special_props = self.add_props(mentions,props)
+        dic['props'] = subject_props
+        print ('====属性mention为====')
+        print (subject_props.keys())
         
         subjects = self.se.extract_subject(mentions,subject_props,question)
         dic['subjects'] = subjects
@@ -254,21 +248,23 @@ class AnswerByPkubase(object):
             print ('×该问题无法生成候选答案')
             return []
         
-        tuples = self.tuple_filter(tuples)#得到top1的单实体问题tuple
+        tuples = self.tuple_filter(tuples)#得到top3的单实体问题tuple
         dic['tuples_filter'] = tuples
         print ('====筛选后的候选查询路径为====')
         print (tuples)
-        if self.qindex not in self.correct_index:
-            top_tuple = tuples[0]
-        else:
-            top_tuple = self.correct(question,tuples)   
-        if self.qindex in self.two_entity_index:
-            twoEntityTuple = self.GetTwoEntityTuple(question,subjects,dic['tuples'])
-            if len(twoEntityTuple)>0:
-                top_tuple = twoEntityTuple
+        
+        #从相似度前三的候选tuple中选择和问题重叠字数最多的
+        top_tuple = self.correct(question,tuples)
+        #尝试桥接双实体路径
+        twoEntityTuple = self.GetTwoEntityTuple(question,subjects,dic['tuples'])
+        if len(twoEntityTuple)>0:
+            top_tuple = twoEntityTuple
+                
+                
         dic['top_tuple'] = top_tuple
         print ('====最终候选查询路径为====')
         print (top_tuple)
+        
         #将tuples中的属性值变为无引号形式
         search_paths = [ele for ele in top_tuple]
         #生成cypher语句并查询
@@ -300,7 +296,7 @@ class AnswerByPkubase(object):
         
     def ProcessTestCorpus(self,path):
         with cs.open(path,'r','utf-8') as fp:
-            lines = fp.read().split('\r\n')[:-1]#卧槽这里！！！！！！！！！！！！！！
+            lines = fp.read().split('\r\n')[:-1]
         answers = []
         for line in lines:
             question = ''.join(line.split(':')[1:])
@@ -312,7 +308,7 @@ if __name__ == '__main__':
     ANS = AnswerByPkubase()
     test_answers = ANS.ProcessTestCorpus('../corpus/task6ckbqa_test.questions.txt')
     text = []
-    with cs.open('../data/record/test_answer_last.txt','w','utf-8') as fp:
+    with cs.open('../data/record/test_answer_last.txt','w','utf-8') as fp:#这个文件是神经网络方法最终得到的可提交结果
         for ans in test_answers:
             text.append('\t'.join(ans))
         fp.write('\n'.join(text))
