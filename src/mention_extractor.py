@@ -9,14 +9,12 @@ import codecs as cs
 import pickle
 import time
 import numpy as np
-from keras_bert import load_trained_model_from_checkpoint, Tokenizer,get_custom_objects
-from keras.layers import Input,Dense
-from keras.layers.wrappers import TimeDistributed
-from keras.models import Model,load_model
-from keras.optimizers import Adam
+from keras_bert import Tokenizer,get_custom_objects
+from keras.models import load_model
 
 class MentionExtractor(object):
     def __init__(self,):
+        #分词词典加载
         with cs.open('../data/segment_dic.txt','r','utf-8') as fp:
             segment_dic = {}
             for line in fp:
@@ -24,10 +22,13 @@ class MentionExtractor(object):
                     segment_dic[line.strip()] = 0
         self.segment_dic = segment_dic
         self.max_seq_len = 20
-        self.ner_model = load_model('../data/model/ner_model.h5', custom_objects=get_custom_objects())
         begin = time.time()
         jieba.load_userdict('../data/segment_dic.txt')
         print ('加载用户分词词典时间为:%.2f'%(time.time()-begin))
+        #加载训练好的实体识别模型
+        custom_objects = get_custom_objects()
+        self.ner_model = load_model('../data/model/ner_model.h5', custom_objects=custom_objects)
+        #加载bert tokenlizer
         dict_path = '../../news_classifer_task/wwm/vocab.txt'
         token_dict = {}
         with cs.open(dict_path, 'r', 'utf8') as reader:
@@ -37,23 +38,6 @@ class MentionExtractor(object):
         self.tokenizer = Tokenizer(token_dict)
         print ('mention extractor loaded')
 
-    def load_ner_model(self,):
-        
-        config_path = '../../news_classifer_task/wwm/bert_config.json'
-        checkpoint_path = '../../news_classifer_task/wwm/bert_model.ckpt'
-        bert_model = load_trained_model_from_checkpoint(config_path, checkpoint_path, seq_len=None)#这里预训练的bert模型被看待为一个keras层
-        for l in bert_model.layers:
-            l.trainable = True
-        x1_in = Input(shape=(None,))
-        x2_in = Input(shape=(None,))
-        x = bert_model([x1_in, x2_in])#(batch,step,feature)
-        x = TimeDistributed(Dense(256,activation='tanh'))(x)
-        p = TimeDistributed(Dense(1, activation='sigmoid'))(x)
-        model = Model([x1_in, x2_in], p)
-        model.compile(loss='binary_crossentropy',optimizer=Adam(1e-5),metrics=['accuracy'])
-        
-        model = load_model('../data/model/ner_model.h5', custom_objects=get_custom_objects())
-        return model
     
     def extract_mentions(self,question):
         '''
@@ -71,10 +55,12 @@ class MentionExtractor(object):
         #使用序列标注模型来抽取候选 mention
         x1, x2 = self.tokenizer.encode(first=question,max_len = self.max_seq_len)
         x1,x2= np.array([x1]),np.array([x2])
-        predict_y = self.ner_model.predict([x1,x2],batch_size=32).tolist()[0]#(1,len)
-        mentions = mentions + self.restore_entity_from_labels(predict_y,question)
+        predict_y = self.ner_model.predict([x1,x2],batch_size=32).tolist()[0]#(len,1)
+        predict_y = [1 if each[0]>0.5 else 0 for each in predict_y]
+        mentions_bert = self.restore_entity_from_labels(predict_y,question)
         
         #判断是否属于mention_dic
+        mentions = mentions + mentions_bert
         for token in mentions:
             entity_mention[token] = token
 
@@ -96,7 +82,6 @@ class MentionExtractor(object):
         return entitys  
         
     def GetEntityMention(self,corpus):
-        '''将问题分词，提取出在分词词典并且tf<10的词，加入mention中，并生成三个分数'''
         mention_num = 0
         for i in range(len(corpus)):
             dic = corpus[i]

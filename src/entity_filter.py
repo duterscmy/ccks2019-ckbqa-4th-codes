@@ -47,7 +47,7 @@ def GetData(corpus,mode):
         q_sample_indexs = []
         for e in candidate_entitys:
             features = candidate_entitys[e]
-            X.append(features[1:])  # 第一个特征是该实体对应的mention 
+            X.append(features[1:])  # 第0个特征是该实体对应的mention 
             if e in gold_entity:
                 Y.append([1])
             else:
@@ -122,6 +122,7 @@ def SaveFilterCandiE(corpus,predict_entitys):
     for i in range(len(corpus)):
         candidate_entity_filter = {}
         for e in predict_entitys[i]:
+            # print (corpus[i]['candidate_entity'][e])
             candidate_entity_filter[e] = corpus[i]['candidate_entity'][e]
         corpus[i]['candidate_entity_filter'] = candidate_entity_filter
     return corpus
@@ -140,8 +141,8 @@ if __name__ == '__main__':
     pickle.dump(model,open('../data/model/entity_classifer_model.pkl','wb'))
     y_predict = model.predict_proba(x_valid).tolist()
     
-    #topns = [1,2,3,5,6,7,8,9,10,15,20]
-    topns = [5]
+    topns = [1,2,3,5,6,7,8,9,10,15,20]
+    #topns = [5]
     #得到候选实体
     for topn in topns:
         predict_entitys= GetPredictEntitys(y_predict,samples_valid,question2sample_valid,topn)

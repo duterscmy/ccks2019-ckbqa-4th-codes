@@ -8,7 +8,7 @@ Created on Thu Apr  4 19:11:26 2019
 import codecs as cs
 import pickle
 import time
-from kb import GetRelations_2hop
+from kb import GetRelations_2hop,GetRelationNum
 from utils import ComputeEntityFeatures
 import thulac
 
@@ -21,7 +21,6 @@ class SubjectExtractor(object):
         except:
             self.entity2hop_dic = {}
         self.word_2_frequency = self.LoadWord2Index('../../token2vec/SouGou_word_frequece/SogouLabDic.dic')
-        self.question2mention = pickle.load(open('../data/question_2_mention.pkl','rb'))
         self.not_pos = {'f','d','h','k','r','c','p','u','y','e','o','g','w','m'}  # 'q','mq','v','a','t',
         self.segger = thulac.thulac()
         self.pass_mention_dic = {'是什么','在哪里','哪里','什么','提出的','有什么','国家','哪个','所在',
@@ -41,10 +40,6 @@ class SubjectExtractor(object):
         return dic
     
     def get_mention_feature(self,question,mention):
-        '''
-        得到三个mention级别的特征，分别是mention长度，距离句首的距离和词频
-        其中词频是直接用的搜狗发布的一个词频字典
-        '''
         
         f1 = float(len(mention))#mention的长度
         
@@ -85,17 +80,20 @@ class SubjectExtractor(object):
             print ('====当前实体mention为：%s===='%(mention))
             if mention in self.mention2entity_dic:#如果它有对应的实体
                 for entity in self.mention2entity_dic[mention]:
+                    #mention的特征
+                    mention_features = self.get_mention_feature(question,mention)
+                    #得到实体两跳内的所有关系
                     entity = '<'+entity+'>'
-                    #得到三个mention级别的特征
-                    candidate_subject[entity] = self.get_mention_feature(question,mention)
                     if entity in self.entity2hop_dic:
                         relations = self.entity2hop_dic[entity]
                     else:            
                         relations = GetRelations_2hop(entity)
                         self.entity2hop_dic[entity] = relations
-                    #计算问题和主语实体及其两跳内关系间的相似度，得到若干个实体级别的特征
-                    features = ComputeEntityFeatures(question,entity,relations)#重叠词和字特征
-                    candidate_subject[entity].extend(features)
+                    #计算问题和主语实体及其两跳内关系间的相似度
+                    similar_features = ComputeEntityFeatures(question,entity,relations)
+                    #实体的流行度特征
+                    popular_feature = GetRelationNum(entity)
+                    candidate_subject[entity] = mention_features + similar_features + [popular_feature ** 0.5]
 
 
         for prop in subject_props:
@@ -112,15 +110,21 @@ class SubjectExtractor(object):
             if entity_prop in candidate_subject:
                 continue
 
+            
+            #mention的特征
+            mention_features = self.get_mention_feature(question,prop_mention)
+            #得到实体两跳内的所有关系
             entity = '\"'+prop+'\"'
-            candidate_subject[entity] = self.get_mention_feature(question,prop_mention)#mention的特征
             if entity in self.entity2hop_dic:
                 relations = self.entity2hop_dic[entity]
             else:            
                 relations = GetRelations_2hop(entity)
                 self.entity2hop_dic[entity] = relations
-            features = ComputeEntityFeatures(question,entity,relations)#重叠词和字特征
-            candidate_subject[entity].extend(features)
+            #计算问题和主语实体及其两跳内关系间的相似度
+            similar_features = ComputeEntityFeatures(question,entity,relations)
+            #实体的流行度特征
+            popular_feature = GetRelationNum(entity)
+            candidate_subject[entity] = mention_features + similar_features + [popular_feature ** 0.5]
         pickle.dump(self.entity2hop_dic,open('../data/entity2hop_dic.pkl','wb'))
         return candidate_subject
                     
@@ -171,8 +175,8 @@ class SubjectExtractor(object):
         return corpus
 
 if __name__ == '__main__':
-    inputpaths = ['../data/all_mentions_train.pkl','../data/all_mentions_valid.pkl']
-    outputpaths = ['../data/candidate_entitys_train.pkl','../data/candidate_entitys_valid.pkl']
+    inputpaths = ['../data/all_mentions_train.pkl','../data/all_mentions_valid.pkl','../data/all_mentions_test.pkl']
+    outputpaths = ['../data/candidate_entitys_train.pkl','../data/candidate_entitys_valid.pkl','../data/candidate_entitys_test.pkl']
     se = SubjectExtractor()
     for i in range(len(inputpaths)):
         inputpath = inputpaths[i]

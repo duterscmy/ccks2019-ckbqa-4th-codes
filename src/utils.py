@@ -9,19 +9,20 @@ import thulac
 import codecs as cs
 import numpy as np
 import tensorflow as tf
+import gensim
 segger = thulac.thulac(seg_only=True)
 
 #word embedding
 chinese_embedding = {}
 with cs.open('../../token2vec/zhwiki_2017_03.sg_50d.word2vec','r','utf-8') as fp:
-    lines = fp.read().split('\n')[1:300000]
+    lines = fp.read().split('\n')[1:100000]
     for line in lines:
         line = line.strip()
         elements = line.split(' ')
         chinese_embedding[elements[0]] = []
         for num in elements[1:]:
             chinese_embedding[elements[0]].append(float(num))
-print ('wordvec loaded')
+#model = gensim.models.KeyedVectors.load_word2vec_format('../../token2vec/zhwiki_2017_03.sg_50d.word2vec',binary = False)
 
 
 def ComputeSimilar(p_tokens,q_tokens,wordvec):
@@ -83,6 +84,15 @@ def ComputeTupleFeatures(predicates,question):
     char_similar_cos= ComputeSimilar(p_chars,q_chars,chinese_embedding)
     return [word_overlap,word_similar_cos,char_overlap,char_similar_cos]
 
+def features_from_two_sequences(s1,s2):
+    #overlap
+    overlap = len(set(s1)&(set(s2)))
+    #集合距离
+    jaccard = len(set(s1)&(set(s2))) / len(set(s1)|(set(s2)))
+    #词向量相似度
+    #wordvecsim = model.similarity(''.join(s1),''.join(s2))
+    return [overlap,jaccard]
+
 def ComputeEntityFeatures(question,entity,relations):
     '''
     抽取每个实体或属性值2hop内的所有关系，来跟问题计算各种相似度特征
@@ -94,26 +104,24 @@ def ComputeEntityFeatures(question,entity,relations):
         [word_overlap,char_overlap,word_embedding_similarity,char_overlap_ratio]
     '''
     #得到主语-谓词的tokens及chars
-    if entity[0] == '<' or entity[0] == '\"':
-        entity = entity[1:-1]
     p_tokens = []
     for p in relations:
         p_tokens.extend(segger.cut(p[1:-1]))
-    p_tokens.extend(segger.cut(entity))
     p_tokens = [token[0] for token in p_tokens]
     p_chars = [char for char in ''.join(p_tokens)]
     
     q_tokens = segger.cut(question)
     q_tokens = [token[0] for token in q_tokens]
     q_chars = [char for char in question]
-    #计算谓词和问题的word overlap
-    word_overlap = len(set(p_tokens).intersection(set(q_tokens)))
-    #计算谓词和问题的char overlap
-    char_overlap = len(set(p_chars).intersection(set(q_chars)))
+    
+    e_tokens = segger.cut(entity[1:-1])
+    e_tokens = [token[0] for token in e_tokens]
+    e_chars = [char for char in entity[1:-1]]
+    
+    qe_feature = features_from_two_sequences(q_tokens,e_tokens) + features_from_two_sequences(q_chars,e_chars)
+    qr_feature = features_from_two_sequences(q_tokens,p_tokens) + features_from_two_sequences(q_chars,p_chars)
     #实体名和问题的overlap除以实体名长度的比例
-    return [word_overlap,char_overlap]
+    return qe_feature+qr_feature
 
 if __name__ == '__main__':
-    print (ComputeTupleFeatures(['中文名'],'高谭市的守护者的中文名是什么？'))
-    print (ComputeTupleFeatures(['狗'],'高谭市的守护者的中文名是什么？'))
-    print (ComputeTupleFeatures(['曹'],'高谭市的守护者的中文名是什么？'))
+    print (ComputeEntityFeatures('高谭市的守护者的中文名是什么？','<高谭市>',['<守护者>']))

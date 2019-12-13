@@ -31,6 +31,7 @@ class PropExtractor(object):
         '''
         props = {}#键为知识库里prop，值为mention
         QUES = question
+        
         #包含在双引号 书名号里的属性
         mark_props = {}
         elements = re.findall('\".+\"|《.+》',question)
@@ -160,11 +161,6 @@ class PropExtractor(object):
         for i in range(len(corpus)):
             question = corpus[i]['question']
             gold_entitys = corpus[i]['gold_entitys']
-            entity_mention = corpus[i]['entity_mention']
-            sql = corpus[i]['sql']
-            shit = 'filter regex'
-            if shit in sql:  # 有的也能找到答对
-                irregular.append(i)
 
 
             # 提取gold props
@@ -177,20 +173,13 @@ class PropExtractor(object):
             pred_props = self.extract_properties(question)  # 得到的均不包含引号
             corpus[i]['all_props'] = pred_props
 
-            # list属性 主要是人名，小迪，六一居士，房仕龙等。。
-            list_props = {}
-
-            pred_props['list_props'] = list_props
-            
             # 得到所有可能的属性corpus[i]['subject_props']
             subject_props = {}
             subject_props.update(pred_props['mark_props'])
-            # 浅复制，深复制？？subject_props =pred_props['mark_props'] mark_props出错
             subject_props.update(pred_props['time_props'])
             subject_props.update(pred_props['digit_props'])
             subject_props.update(pred_props['other_props'])
             subject_props.update(pred_props['fuzzy_props'])
-            subject_props.update(pred_props['list_props'])
             corpus[i]['subject_props'] = subject_props
             all_props_num += len(corpus[i]['subject_props'])
             
@@ -253,7 +242,7 @@ if __name__ == "__main__":
     outputpaths = ['../data/all_mentions_train.pkl','../data/all_mentions_valid.pkl','../data/all_mentions_test.pkl']
     starttime = time.time()
     pe = PropExtractor()
-    for i in range(len(inputpaths)):
+    for i in range(1,2):
         inputpath = inputpaths[i]
         outputpath = outputpaths[i]
         corpus = pickle.load(open(inputpath,'rb'))
