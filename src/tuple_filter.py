@@ -7,9 +7,6 @@ Created on Mon Apr  1 10:26:35 2019
 
 import pickle
 from sklearn import linear_model
-#from sklearn.naive_bayes import GaussianNB
-#from sklearn.ensemble import GradientBoostingClassifier
-#from sklearn import preprocessing
 import numpy as np
 import random
 from nn_utils import cmp
@@ -42,10 +39,10 @@ def GetData(corpus):
         for t in candidate_tuples:
             features = candidate_tuples[t]
             if len(gold_tuple) == len(set(gold_tuple).intersection(set(t))):
-                X.append([features[9][0][1]])
+                X.append([features[2]])
                 Y.append([1])
             else:
-                X.append([features[9][0][1]])
+                X.append([features[2]])
                 Y.append([0])
             samples.append(t)
             q_sample_indexs.append(sample_index)
@@ -84,8 +81,6 @@ def GetData_train(corpus):
     hop2_num = 0
     hop2_true_num = 0
     for i in range(len(corpus)):
-        if i>=1283 and i<1683:
-            continue
         candidate_tuples = corpus[i]['candidate_tuples']#字典
         gold_tuple = corpus[i]['gold_tuple']
         gold_entitys = corpus[i]['gold_entitys']
@@ -93,12 +88,12 @@ def GetData_train(corpus):
         for t in candidate_tuples:
             features = candidate_tuples[t]
             if len(gold_tuple) == len(set(gold_tuple).intersection(set(t))):
-                X.append([features[9][0][1]])
+                X.append([features[2]])
                 Y.append([1])
             else:
                 prop = random.random()
                 if prop<0.5:
-                    X.append([features[9][0][1]])
+                    X.append([features[2]])
                     Y.append([0])
         
         if_true = 0#判断答案是否召回
