@@ -52,15 +52,22 @@ class TupleExtractor(object):
                 inputs.append((question,human_question))
                 
         #将所有路径一起输入BERT获得分数
-        print('共有{}个候选路径'.format(len(inputs)))
+        print('====共有{}个候选路径===='.format(len(inputs)))
         bert_scores = []
-        for i in range(len(inputs)//1000+1):
+        batch_size = 1000
+        if len(inputs)%batch_size==0:
+            num_batches = len(inputs)//batch_size
+        else:
+            num_batches = len(inputs)//batch_size + 1
+        starttime=time.time()
+        for i in range(num_batches):
             begin = i*1000
             end = min(len(inputs),(i+1)*1000)
             self.simmer.input_queue.put(inputs[begin:end])
             prediction = self.simmer.output_queue.get()
             bert_scores.extend([prediction[i][1] for i in range(len(prediction))])
-            
+        print ('====为所有路径计算特征耗费%.2f秒===='%(time.time()-starttime))
+        
         index = 0
         for entity in entity_list:
             #得到该实体的所有关系路径
@@ -74,7 +81,7 @@ class TupleExtractor(object):
                 index += 1
                 score.append(sim2)
                 candidate_tuples[this_tuple] = score
-            print ('====查询%s候选关系并计算特征耗费%.2f秒===='%(entity,time.time()-starttime))
+            print ('====得到实体%s的所有候选路径及其特征===='%(entity))
 
         return candidate_tuples
     
