@@ -127,8 +127,10 @@ class BertSim:
         self.mode = mode
         self.estimator = self.get_estimator()
         if mode == tf.estimator.ModeKeys.PREDICT:
-            self.input_queue = Queue(maxsize=1)
-            self.output_queue = Queue(maxsize=1)
+#            self.input_queue = Queue(maxsize=1)
+#            self.output_queue = Queue(maxsize=1)
+            self.input_queue = Queue(maxsize=0)
+            self.output_queue = Queue(maxsize=0)
             self.predict_thread = Thread(target=self.predict_from_queue, daemon=True)
             self.predict_thread.start()
 
@@ -299,7 +301,7 @@ class BertSim:
                 'input_ids': (None, self.max_seq_length),
                 'input_mask': (None, self.max_seq_length),
                 'segment_ids': (None, self.max_seq_length),
-                'label_ids': (1,)}).prefetch(10))
+                'label_ids': (None,)}).prefetch(10))
 
     def convert_examples_to_features(self, examples, label_list, max_seq_length, tokenizer):
         """Convert a set of `InputExample`s to a list of `InputFeatures`."""
@@ -666,8 +668,8 @@ if __name__ == '__main__':
     sim = BertSim()
     sim.set_mode(tf.estimator.ModeKeys.TRAIN)
     sim.train()
-    sim.set_mode(tf.estimator.ModeKeys.EVAL)
-    sim.eval()
+#    sim.set_mode(tf.estimator.ModeKeys.EVAL)
+#    sim.eval()
     sim.set_mode(tf.estimator.ModeKeys.PREDICT)
     while True:
         sentence1 = input('sentence1: ')

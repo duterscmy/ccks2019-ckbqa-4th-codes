@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 """
+Created on Sun Apr 19 12:52:22 2020
+
+@author: Administrator
+"""
+
+"""
 Created on Fri Mar 29 13:01:42 2019
 
 @author: cmy
@@ -7,15 +13,15 @@ Created on Fri Mar 29 13:01:42 2019
 import codecs as cs
 import pickle
 import time
-from kb import GetRelationPaths
-import sys
-#sys.path.append("..")
-#from bert4.similarity import BertSim
+from kb import GetRelationPaths,GetRelationPathsSingle
 from similarity import BertSim
 import tensorflow as tf
 
 class TupleExtractor(object):
+
     def __init__(self):
+        
+        #加载一些缓存
         try:
             self.entity2relations_dic = pickle.load(open('../data/entity2relation_dic.pkl','rb'))
         except:
@@ -24,40 +30,55 @@ class TupleExtractor(object):
             self.sentencepair2sim = pickle.load(open('../data/sentencepair2sim_dic.pkl','rb'))
         except:
             self.sentencepair2sim = {}
+            
+        #加载基于tensorflow的微调过的文本匹配模型    
         self.simmer = BertSim()
         self.simmer.set_mode(tf.estimator.ModeKeys.PREDICT)
+        print ('bert相似度匹配模型加载完成')
+        #加载简单-复杂问题分类模型
+        #self.question_classify_model = get_model()
+        print ('问题分类模型加载完成')
         print ('tuples extractor loaded')
         
     def extract_tuples(self,candidate_entitys,question):
         ''''''
         candidate_tuples = {}
-        
-        for entity in candidate_entitys:
+        entity_list = candidate_entitys.keys()#得到有序的实体列表
+        inputs = []#获取所有候选路径的BERT输入
+        for entity in entity_list:
             #得到该实体的所有关系路径
             starttime=time.time()
-            
             relations = GetRelationPaths(entity)
-            
+            if len(relations)>1000:#过滤掉关系数量过多的实体，可能会导致错误，但不过滤用similarity.py显存会爆
+                continue
             mention = candidate_entitys[entity][0]
             for r in relations:
-                
-                this_tuple = tuple([entity]+r)#生成候选tuple
                 predicates = [relation[1:-1] for relation in r]#python-list 关系名列表
-
                 human_question = '的'.join([mention]+predicates)
-                    
-                score = [entity]+[s for s in candidate_entitys[entity][0:1]]#初始化特征
+                inputs.append((question,human_question))
                 
-                try:
-                    sim2 = self.sentencepair2sim[question+human_question]
-                except:
-                    sim2 = self.simmer.predict(question,human_question)[0][1]
-                    self.sentencepair2sim[question+human_question] = sim2
-                self.sentencepair2sim[question+human_question] =sim2
+        #将所有路径一起输入BERT获得分数
+        self.simmer.input_queue.put(inputs)
+        print('共有{}个候选路径'.format(len(inputs)))
+        prediction = self.simmer.output_queue.get()
+        bert_scores = [prediction[i][1] for i in range(len(prediction))]
+        index = 0
+        
+        for entity in entity_list:
+            #得到该实体的所有关系路径
+            starttime=time.time()
+            relations = GetRelationPaths(entity)
+            if len(relations)>1000:
+                continue
+            mention = candidate_entitys[entity][0]
+            for r in relations:
+                this_tuple = tuple([entity]+r)#生成候选tuple
+                score = [entity]+candidate_entitys[entity]#初始化特征
+                sim2 = bert_scores[index]
+                index += 1
                 score.append(sim2)
-                
                 candidate_tuples[this_tuple] = score
-            print ('====查询候选关系并计算特征耗费%.2f秒===='%(time.time()-starttime))
+            print ('====查询%s候选关系并计算特征耗费%.2f秒===='%(entity,time.time()-starttime))
 
         return candidate_tuples
     
@@ -76,17 +97,16 @@ class TupleExtractor(object):
             gold_tuple = dic['gold_tuple']
             gold_entitys = dic['gold_entitys']
             candidate_entitys = dic['candidate_entity_filter']
-            
-            candidate_tuples = self.extract_tuples(candidate_entitys,question)
             print (i)
             print (question)
+            candidate_tuples = self.extract_tuples(candidate_entitys,question)
             all_tuples_num += len(candidate_tuples)
             dic['candidate_tuples'] = candidate_tuples
             
             #判断gold tuple是否包含在candidate_tuples_list中
             if_true = 0
             for thistuple in candidate_tuples:
-                if len(gold_tuple) == len(set(gold_tuple).intersection(set(thistuple))):
+                if len(gold_tuple) == len(set(gold_tuple)&set(thistuple)):
                     if_true = 1
                     break
             if if_true == 1:
@@ -104,12 +124,10 @@ class TupleExtractor(object):
         return corpus
 
 if __name__ == '__main__':
-    inputpaths = ['../data/candidate_entitys_filter_valid.pkl','../data/candidate_entitys_filter_train.pkl']
-    outputpaths = ['../data/candidate_tuples_valid.pkl','../data/candidate_tuples_train.pkl']
+    inputpaths = ['../data/candidate_entitys_filter_train.pkl','../data/candidate_entitys_filter_test.pkl','../data/candidate_entitys_filter_valid.pkl']
+    outputpaths = ['../data/candidate_tuples_train.pkl','../data/candidate_tuples_test.pkl','../data/candidate_tuples_valid.pkl']
     te = TupleExtractor()
-    for i in range(2):
-        inputpath = inputpaths[i]
-        outputpath = outputpaths[i]
+    for inputpath,outputpath in zip(inputpaths,outputpaths):
         corpus = pickle.load(open(inputpath,'rb'))
         corpus = te.GetCandidateAns(corpus)
         pickle.dump(corpus,open(outputpath,'wb'))
