@@ -26,10 +26,6 @@ class TupleExtractor(object):
             self.entity2relations_dic = pickle.load(open('../data/entity2relation_dic.pkl','rb'))
         except:
             self.entity2relations_dic = {}
-        try:
-            self.sentencepair2sim = pickle.load(open('../data/sentencepair2sim_dic.pkl','rb'))
-        except:
-            self.sentencepair2sim = {}
             
         #加载基于tensorflow的微调过的文本匹配模型    
         self.simmer = BertSim()
@@ -49,8 +45,6 @@ class TupleExtractor(object):
             #得到该实体的所有关系路径
             starttime=time.time()
             relations = GetRelationPaths(entity)
-            if len(relations)>1000:#过滤掉关系数量过多的实体，可能会导致错误，但不过滤用similarity.py显存会爆
-                continue
             mention = candidate_entitys[entity][0]
             for r in relations:
                 predicates = [relation[1:-1] for relation in r]#python-list 关系名列表
@@ -58,18 +52,20 @@ class TupleExtractor(object):
                 inputs.append((question,human_question))
                 
         #将所有路径一起输入BERT获得分数
-        self.simmer.input_queue.put(inputs)
         print('共有{}个候选路径'.format(len(inputs)))
-        prediction = self.simmer.output_queue.get()
-        bert_scores = [prediction[i][1] for i in range(len(prediction))]
+        bert_scores = []
+        for i in range(len(inputs)//1000+1):
+            begin = i*1000
+            end = min(len(inputs),(i+1)*1000)
+            self.simmer.input_queue.put(inputs[begin:end])
+            prediction = self.simmer.output_queue.get()
+            bert_scores.extend([prediction[i][1] for i in range(len(prediction))])
+            
         index = 0
-        
         for entity in entity_list:
             #得到该实体的所有关系路径
             starttime=time.time()
             relations = GetRelationPaths(entity)
-            if len(relations)>1000:
-                continue
             mention = candidate_entitys[entity][0]
             for r in relations:
                 this_tuple = tuple([entity]+r)#生成候选tuple
@@ -120,12 +116,15 @@ class TupleExtractor(object):
         print('单实体问题中，候选答案能覆盖标准查询路径的比例为:%.3f'%(hop2_true_num/hop2_num))
         print('平均每个问题的候选答案数量为:%.3f'%(all_tuples_num/len(corpus)))
         pickle.dump(self.entity2relations_dic,open('../data/entity2relation_dic.pkl','wb'))
-        pickle.dump(self.sentencepair2sim,open('../data/sentencepair2sim_dic.pkl','wb'))
         return corpus
 
 if __name__ == '__main__':
-    inputpaths = ['../data/candidate_entitys_filter_train.pkl','../data/candidate_entitys_filter_test.pkl','../data/candidate_entitys_filter_valid.pkl']
-    outputpaths = ['../data/candidate_tuples_train.pkl','../data/candidate_tuples_test.pkl','../data/candidate_tuples_valid.pkl']
+    inputpaths = [#'../data/candidate_entitys_filter_train.pkl',
+                  '../data/candidate_entitys_filter_test.pkl',
+                  '../data/candidate_entitys_filter_valid.pkl']
+    outputpaths = [#'../data/candidate_tuples_train.pkl',
+                   '../data/candidate_tuples_test.pkl',
+                   '../data/candidate_tuples_valid.pkl']
     te = TupleExtractor()
     for inputpath,outputpath in zip(inputpaths,outputpaths):
         corpus = pickle.load(open(inputpath,'rb'))
