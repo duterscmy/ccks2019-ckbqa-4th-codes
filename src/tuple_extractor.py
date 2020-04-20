@@ -51,18 +51,18 @@ class TupleExtractor(object):
                 human_question = '的'.join([mention]+predicates)
                 inputs.append((question,human_question))
                 
-        #将所有路径一起输入BERT获得分数
+        #将所有路径输入BERT获得分数
         print('====共有{}个候选路径===='.format(len(inputs)))
         bert_scores = []
-        batch_size = 1000
+        batch_size = 64
         if len(inputs)%batch_size==0:
             num_batches = len(inputs)//batch_size
         else:
             num_batches = len(inputs)//batch_size + 1
         starttime=time.time()
         for i in range(num_batches):
-            begin = i*1000
-            end = min(len(inputs),(i+1)*1000)
+            begin = i*batch_size
+            end = min(len(inputs),(i+1)*batch_size)
             self.simmer.input_queue.put(inputs[begin:end])
             prediction = self.simmer.output_queue.get()
             bert_scores.extend([prediction[i][1] for i in range(len(prediction))])
