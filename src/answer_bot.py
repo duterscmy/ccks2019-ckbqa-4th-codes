@@ -20,21 +20,19 @@ import thulac
 class AnswerByPkubase(object):
     def __init__(self,):
         
-        self.me = MentionExtractor()
-        self.pe = PropExtractor()
-        self.se = SubjectExtractor()
+        
         self.te = TupleExtractor()
-        self.topn_e = 6
+        self.me = MentionExtractor()
+        self.se = SubjectExtractor()
+        self.pe = PropExtractor()
+        self.topn_e = 5
         self.topn_t = 3
         
         self.subject_classifer_model = pickle.load(open('../data/model/entity_classifer_model.pkl','rb'))
         self.tuple_classifer_model = pickle.load(open('../data/model/tuple_classifer_model.pkl','rb'))
-        self.tuple_scaler = joblib.load('../data/tuple_scaler')
         
         self.segger = thulac.thulac()
         self.not_relation = {'<中文名>','<外文名>','<本名>','<别名>','<国籍>','<职业>'}#双实体问题桥接不考虑的关系
-        self.validAns = {}
-        self.qindex = 1
         
     def LoadMentionDic(self):
         with cs.open('../PKUBASE/pkubase-mention2ent.txt','r','utf-8') as fp:
@@ -80,8 +78,9 @@ class AnswerByPkubase(object):
         features = []
         for t in tuples:
             tuple_list.append(t)
-            features.append(tuples[t][2:])
-        xxx = self.tuple_scaler.transform(np.array(features))
+            features.append(tuples[t][-1:])
+        #xxx = self.tuple_scaler.transform(np.array(features))
+        xxx = features
         prepro = self.tuple_classifer_model.predict_proba(xxx)[:,1].tolist()
         sample_prop = [each for each in zip(prepro,tuple_list)]#(prop,(tuple))
         sample_prop = sorted(sample_prop, key=lambda x:x[0], reverse=True)
@@ -130,36 +129,9 @@ class AnswerByPkubase(object):
                 two_entity_tuple = t
         return two_entity_tuple
     
-    def tuple_filter_by_nn(self,question,candidate_tuples):
-        '''
-        输入候选答案，将其填补到20个，使用训练好的文本匹配模型进行打分，返回分数最高的候选答案
-        '''
-        candidate_list = [t for t in candidate_tuples]
-        if len(candidate_list)<(self.topn_t):
-            repeat_list = [t for t in candidate_list]
-            repeat_num = self.topn_t//len(candidate_list)+1
-            for j in range(repeat_num):
-                candidate_list = candidate_list + repeat_list
-        tuples = candidate_list[:self.topn_t]
-        
-        q_inputs,q_len,e_inputs,e_len,r_inputs,r_len,f = self.rep.Generate_batch(question,tuples,candidate_tuples)#(num_candi,num_feature)
-        
-        predict_index = self.sess.run(self.Model.prediction,
-                     feed_dict = { self.Model.q_input:q_inputs, 
-                                  self.Model.e_input:e_inputs, 
-                                  self.Model.r_input:r_inputs,
-                                  self.Model.q_len:q_len,
-                                  self.Model.e_len:e_len,
-                                  self.Model.r_len:r_len,
-                                  self.Model.features:f})
-        return tuples[predict_index]
     
     def add_props(self,entity_mention,pred_props):
-        '''
-        用entity mention对props做一个补充
-        '''
-        #补充属性值里带顿号的情况
-                           
+        #所有可能的属性值主语                         
         subject_props = {}
         subject_props.update(pred_props['mark_props'])
         subject_props.update(pred_props['time_props'])
@@ -167,13 +139,15 @@ class AnswerByPkubase(object):
         subject_props.update(pred_props['other_props'])
         subject_props.update(pred_props['fuzzy_props'])
         
+        #时间及称号类的属性值
         special_props = {}
-        subject_props.update(pred_props['mark_props'])
-        subject_props.update(pred_props['time_props'])
+        special_props.update(pred_props['mark_props'])
+        special_props.update(pred_props['time_props'])
         
         return subject_props,special_props
 
-    def correct(self,question,tuples):
+    def get_most_overlap_tuple(self,question,tuples):
+        #从排名前几的tuples里选择与问题overlap最多的
         max_ = 0
         ans = tuples[0]
         for t in tuples:
@@ -189,7 +163,7 @@ class AnswerByPkubase(object):
                 max_ = f
         return ans
     
-    def Answer_By_KB(self,question):
+    def answer_main(self,question):
         '''
         输入问题，依次执行：
         抽取实体mention、抽取属性值、生成候选实体并得到特征、候选实体过滤、生成候选查询路径（单实体双跳）、候选查询路径过滤
@@ -231,11 +205,11 @@ class AnswerByPkubase(object):
             return []
         
         subjects= self.subject_filter(subjects)
-        if self.qindex<=446:
-            for prop in special_props:
-                sub = '\"'+prop+'\"'
-                if sub not in subjects:
-                    subjects[sub] = [special_props[prop],3,1,1,2,6]
+        #过滤后仍然加上特殊的时间/称号/书名类属性值
+        for prop in special_props:
+            sub = '\"'+prop+'\"'
+            if sub not in subjects:
+                subjects[sub] = [special_props[prop],3,1,1,2,6]
         dic['subjects_filter'] = subjects
         print ('====筛选后的主语实体为====')
         print (subjects.keys())
@@ -245,29 +219,26 @@ class AnswerByPkubase(object):
         tuples = self.te.extract_tuples(subjects,question)
         dic['tuples'] = tuples
         if len(tuples) == 0:
-            print ('×该问题无法生成候选答案')
             return []
         
-        tuples = self.tuple_filter(tuples)#得到top3的单实体问题tuple
+        tuples = self.tuple_filter(tuples)#得到top1的单实体问题tuple
         dic['tuples_filter'] = tuples
         print ('====筛选后的候选查询路径为====')
         print (tuples)
         
-        #从相似度前三的候选tuple中选择和问题重叠字数最多的
-        top_tuple = self.correct(question,tuples)
-        #尝试桥接双实体路径
-        twoEntityTuple = self.GetTwoEntityTuple(question,subjects,dic['tuples'])
-        if len(twoEntityTuple)>0:
-            top_tuple = twoEntityTuple
+        #top_tuple = tuples[0]
+        top_tuple = self.get_most_overlap_tuple(question,tuples)   
+#        twoEntityTuple = self.GetTwoEntityTuple(question,subjects,dic['tuples'])
+#        if len(twoEntityTuple)>0:
+#            top_tuple = twoEntityTuple
                 
-                
-        dic['top_tuple'] = top_tuple
+
         print ('====最终候选查询路径为====')
         print (top_tuple)
         
-        #将tuples中的属性值变为无引号形式
-        search_paths = [ele for ele in top_tuple]
+        
         #生成cypher语句并查询
+        search_paths = [ele for ele in top_tuple]
         if len(search_paths) == 2:
             sql = "match (a:Entity)-[r1:Relation]-(b) where a.name=$ename and r1.name=$rname return b.name"
             res = session.run(sql,ename=search_paths[0],rname=search_paths[1])
@@ -289,28 +260,37 @@ class AnswerByPkubase(object):
         print ('====答案为====')
         print (answer)
         print ('\n')
-        self.validAns[self.qindex] =dic
-        self.qindex += 1
         return answer
 
         
-    def ProcessTestCorpus(self,path):
-        with cs.open(path,'r','utf-8') as fp:
-            lines = fp.read().split('\r\n')[:-1]
-        answers = []
-        for line in lines:
-            question = ''.join(line.split(':')[1:])
-            answer = self.Answer_By_KB(question)
-            answers.append(answer)
-        return answers
+    def add_answers_to_corpus(self,corpus):
+        
+        for i in range(len(corpus)):
+            sample = corpus[i]
+            question = sample['question']
+            ans = self.answer_main(question)
+            sample['predict_ans'] = ans
+        return corpus
 
 if __name__ == '__main__':
-    ANS = AnswerByPkubase()
-    test_answers = ANS.ProcessTestCorpus('../corpus/task6ckbqa_test.questions.txt')
-    text = []
-    with cs.open('../data/record/test_answer_last.txt','w','utf-8') as fp:#这个文件是神经网络方法最终得到的可提交结果
-        for ans in test_answers:
-            text.append('\t'.join(ans))
-        fp.write('\n'.join(text))
-    pickle.dump(ANS.te.sentencepair2sim,open('../data/sentencepair2sim_dic.pkl','wb'))
-    pickle.dump(ANS.validAns,open('../data/TestAns_last.pkl','wb'))
+    ansbot = AnswerByPkubase()
+    corpus = pickle.load(open('../data/candidate_entitys_filter_test.pkl','rb'))
+    corpus = ansbot.add_answers_to_corpus(corpus)
+    #pickle.dump(ansbot.te.sentencepair2sim,open('../data/sentencepair2sim_dic.pkl','wb'))
+    
+    ave_f = 0.0
+    for i in range(len(corpus)):
+        sample = corpus[i]
+        gold_ans = sample['answer']
+        pre_ans = sample['predict_ans']
+        true = len(set(gold_ans).intersection(set(pre_ans)))
+        p = true / len(set(pre_ans))
+        r = true / len(set(gold_ans))
+        try:
+            f = 2*p*r/(p+r)
+        except:
+            f = 0.0
+        ave_f += f
+    ave_f /= len(corpus)
+    
+    print (ave_f)

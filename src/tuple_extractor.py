@@ -54,7 +54,7 @@ class TupleExtractor(object):
         #将所有路径输入BERT获得分数
         print('====共有{}个候选路径===='.format(len(inputs)))
         bert_scores = []
-        batch_size = 64
+        batch_size = 128
         if len(inputs)%batch_size==0:
             num_batches = len(inputs)//batch_size
         else:

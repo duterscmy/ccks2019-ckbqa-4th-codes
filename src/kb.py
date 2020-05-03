@@ -11,13 +11,13 @@ import time
 driver = GraphDatabase.driver("bolt://localhost:7687")
 session = driver.session()
 begintime = time.time()
-session.run('MATCH (n) OPTIONAL MATCH (n)-[r]->() RETURN count(n.name) + count(r)')
+#session.run('MATCH (n) OPTIONAL MATCH (n)-[r]->() RETURN count(n.name) + count(r)')
 #session.run('CREATE INDEX ON:Entity(name)')
 endtime = time.time()
 print ('start neo4j and match all entities,the time is %.2f'%(endtime-begintime))
 
 def GetRelationPaths(entity):
-    '''根据实体名，得到所有1跳2跳关系list,2d-list'''
+    '''根据实体名，得到所有2跳内的关系路径，用于问题和关系路径的匹配'''
 
     cql_1 = "match (a:Entity)-[r1:Relation]-() where a.name=$name return DISTINCT r1.name"
     cql_2 = "match (a:Entity)-[r1:Relation]-()-[r2:Relation]->() where a.name=$name return DISTINCT r1.name,r2.name"
@@ -32,7 +32,7 @@ def GetRelationPaths(entity):
     return rpaths1+rpaths2
 
 def GetRelationPathsSingle(entity):
-    '''根据实体名，得到所有1跳2跳关系list,2d-list'''
+    '''根据实体名，得到所有1跳关系路径'''
 
     cql_1 = "match (a:Entity)-[r1:Relation]-() where a.name=$name return DISTINCT r1.name"
     rpaths1 = []
@@ -42,7 +42,7 @@ def GetRelationPathsSingle(entity):
     return rpaths1
 
 def GetRelations_2hop(entity):
-    '''根据实体名，得到两跳内的所有关系dic'''
+    '''根据实体名，得到两跳内的所有关系字典，用于问题和实体子图的匹配'''
     cql= "match (a:Entity)-[r1:Relation]-()-[r2:Relation]->() where a.name=$name return DISTINCT r1.name,r2.name"
     rpaths2 = []
     res = session.run(cql,name=entity)
@@ -62,15 +62,6 @@ def GetRelationNum(entity):
     for record in res:
         ans = record.values()[0]
     return ans
-
-def GetRelationNumsig(entity):
-    '''根据实体名，得到一跳内的不同关系个数,重要度'''
-    cql= "match p=(a:Entity)-[r1:Relation]-() where a.name=$name return DISTINCT r1.name"
-    rpath = []
-    res = session.run(cql,name=entity)
-    for record in res:
-        rpath.append(record['r1.name'])
-    return len(set(rpath))
                       
 def GetTwoEntityTuple(e1,r1,e2):
     cql = "match (a:Entity)-[r1:Relation]-(b:Entity)-[r2:Relation]-(c:Entity) where a.name=$e1n and r1.name=$r1n and c.name=$e2n return DISTINCT r2.name"
@@ -80,10 +71,25 @@ def GetTwoEntityTuple(e1,r1,e2):
         tuples.append(tuple([e1,r1,record['r2.name'],e2]))
     return tuples
 
+def SearchAnsChain(e,r1,r2=None):
+    '''对于链式问题，e-r-ans或e-r1-r2-ans，根据最终的实体和关系查询结果'''
+    if not r2:
+        cql= "match (a:Entity)-[r1:Relation]-(b) where a.name=$ename and r1.name=$r1name return b.name"
+        ans = []
+        res = session.run(cql,ename=e,r1name=r1)
+        for each in res:
+            ans.append(each['b.name'])
+    else:
+        cql= "match (a:Entity)-[r1:Relation]-()-[r2:Relation]-(b) where a.name=$ename and r1.name=$r1name and r2.name=$r2name return b.name"
+        ans = []
+        res = session.run(cql,ename=e,r1name=r1,r2name=r2)
+        for each in res:
+            ans.append(each['b.name'])
+    return ans
+
 
 if __name__ == '__main__':
     
-    sql = "match (a:Entity)-[r1:Relation]-(c)-[r2:Relation]-(b:Entity) where a.name=$ename1 and r1.name=$rname1 and r2.name=$rname2 and b.name=$ename2 return c.name"
-    res = session.run(sql,ename1='<维力医疗>',rname1='<公司高管>',rname2='<硕士学位>',ename2='<高分子材料专业>')
-    ans = [record['c.name'] for record in res]
-    print(ans)
+    print(SearchAnsChain('<康佳集团>','<副总裁>'))
+    print(SearchAnsChain('<赵彤威>','<毕业院校>'))
+    print(SearchAnsChain('<康佳集团>','<非职工监事>'))
