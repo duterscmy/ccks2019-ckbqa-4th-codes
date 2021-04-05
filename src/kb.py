@@ -12,7 +12,8 @@ driver = GraphDatabase.driver("bolt://localhost:7687")
 session = driver.session()
 begintime = time.time()
 #session.run('MATCH (n) OPTIONAL MATCH (n)-[r]->() RETURN count(n.name) + count(r)')
-#session.run('CREATE INDEX ON:Entity(name)')
+
+session.run('CREATE INDEX ON:Entity(name)')  #建索引，导入知识后需要跑一次，之后可以注释
 endtime = time.time()
 print ('start neo4j and match all entities,the time is %.2f'%(endtime-begintime))
 

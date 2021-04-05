@@ -162,7 +162,7 @@ def SaveFilterCandiT(corpus,predict_tuples):
         candidate_tuple_filter = {}
         for t in predict_tuples[i]:
             features = corpus[i]['candidate_tuples'][t]
-            new_features = features[0:2]+[features[9][0][1]]
+            new_features = features[0:2]+features[-1:]
             candidate_tuple_filter[t] = new_features
         corpus[i]['candidate_tuple_filter'] = candidate_tuple_filter
         #temp =corpus[i].pop('candidate_tuples')
