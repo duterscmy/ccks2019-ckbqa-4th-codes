@@ -136,15 +136,13 @@ def restore_entity_from_labels_on_corpus(predicty,questions):
         all_entitys.append(restore_entity_from_labels(predicty[i],questions[i]))
     return all_entitys
 
-model = load_model('../data/model/ner_model.h5', custom_objects=get_custom_objects())
+#model = load_model('../data/model/ner_model.h5', custom_objects=get_custom_objects())
 for i in range(20):
     model.fit([trainx1,trainx2],trainy, epochs=1, batch_size=64)
     predicty = model.predict([testx1,testx2],batch_size=64).tolist()#(num,len,1)
     predicty = [[1 if each[0]>0.5 else 0 for each in line] for line in predicty]
     predict_entitys = restore_entity_from_labels_on_corpus(predicty,test_questions)
-    for j in range(300,320):
-        print (predict_entitys[j])
-        print (test_entitys[j])
+
     p,r,f = computeF(test_entitys,predict_entitys)
     print ('%d epoch f-score is %.3f'%(i,f))
     if f>maxf:
